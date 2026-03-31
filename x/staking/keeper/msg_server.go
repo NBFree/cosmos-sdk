@@ -505,9 +505,9 @@ func (k msgServer) CancelUnbondingDelegation(ctx context.Context, msg *types.Msg
 		return nil, types.ErrDelegatorShareExRateInvalid
 	}
 
-	if validator.IsJailed() {
-		return nil, types.ErrValidatorJailed
-	}
+	// Disabled for tests only!!! // if validator.IsJailed() {
+	// Disabled for tests only!!! // 	return nil, types.ErrValidatorJailed
+	// Disabled for tests only!!! // }
 
 	ubd, err := k.GetUnbondingDelegation(ctx, delegatorAddress, valAddr)
 	if err != nil {
