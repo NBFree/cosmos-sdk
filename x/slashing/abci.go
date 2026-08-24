@@ -2,6 +2,7 @@ package slashing
 
 import (
 	"context"
+	"errors"
 
 	"cosmossdk.io/core/comet"
 
@@ -9,6 +10,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/slashing/keeper"
 	"github.com/cosmos/cosmos-sdk/x/slashing/types"
+	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
 // BeginBlocker check for infraction evidence or downtime of validators
@@ -23,6 +25,17 @@ func BeginBlocker(ctx context.Context, k keeper.Keeper) error {
 	for _, voteInfo := range sdkCtx.VoteInfos() {
 		err := k.HandleValidatorSignature(ctx, voteInfo.Validator.Address, voteInfo.Validator.Power, comet.BlockIDFlag(voteInfo.BlockIdFlag))
 		if err != nil {
+			if errors.Is(err, stakingtypes.ErrNoValidatorFound) {
+				k.Logger(ctx).Error(
+					"skipping slashing for validator missing from staking state",
+					"cons_addr", sdk.ConsAddress(voteInfo.Validator.Address).String(),
+					"power", voteInfo.Validator.Power,
+					"block_id_flag", voteInfo.BlockIdFlag,
+					"error", err,
+				)
+				continue
+			}
+
 			return err
 		}
 	}

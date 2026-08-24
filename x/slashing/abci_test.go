@@ -124,3 +124,60 @@ func TestBeginBlocker(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, stakingtypes.Unbonding, validator.GetStatus())
 }
+
+func TestBeginBlockerSkipsValidatorMissingFromStakingState(t *testing.T) {
+	var (
+		bankKeeper     bankkeeper.Keeper
+		stakingKeeper  *stakingkeeper.Keeper
+		slashingKeeper slashingkeeper.Keeper
+	)
+
+	app, err := simtestutil.Setup(
+		depinject.Configs(
+			testutil.AppConfig,
+			depinject.Supply(log.NewNopLogger()),
+		),
+		&bankKeeper,
+		&stakingKeeper,
+		&slashingKeeper,
+	)
+	require.NoError(t, err)
+
+	ctx := app.NewContext(false)
+	pks := simtestutil.CreateTestPubKeys(2)
+	missingPK, activePK := pks[0], pks[1]
+	simtestutil.AddTestAddrsFromPubKeys(bankKeeper, stakingKeeper, ctx, pks, stakingKeeper.TokensFromConsensusPower(ctx, 200))
+
+	const power int64 = 100
+	stakingtestutil.NewHelper(t, ctx, stakingKeeper).CreateValidatorWithValPower(
+		sdk.ValAddress(activePK.Address()),
+		activePK,
+		power,
+		true,
+	)
+	_, err = stakingKeeper.EndBlocker(ctx)
+	require.NoError(t, err)
+
+	ctx = ctx.WithVoteInfos([]abci.VoteInfo{
+		{
+			Validator: abci.Validator{
+				Address: missingPK.Address(),
+				Power:   power,
+			},
+			BlockIdFlag: cmtproto.BlockIDFlagCommit,
+		},
+		{
+			Validator: abci.Validator{
+				Address: activePK.Address(),
+				Power:   power,
+			},
+			BlockIdFlag: cmtproto.BlockIDFlagCommit,
+		},
+	})
+
+	require.NoError(t, slashing.BeginBlocker(ctx, slashingKeeper))
+
+	info, err := slashingKeeper.GetValidatorSigningInfo(ctx, sdk.ConsAddress(activePK.Address()))
+	require.NoError(t, err)
+	require.Equal(t, int64(1), info.IndexOffset)
+}
