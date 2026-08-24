@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 
@@ -58,6 +59,16 @@ func (k Keeper) AllocateTokens(ctx context.Context, totalPreviousPower int64, bo
 	for _, vote := range bondedVotes {
 		validator, err := k.stakingKeeper.ValidatorByConsAddr(ctx, vote.Validator.Address)
 		if err != nil {
+			if errors.Is(err, stakingtypes.ErrNoValidatorFound) {
+				k.Logger(ctx).Error(
+					"skipping reward allocation for validator missing from staking state",
+					"cons_addr", sdk.ConsAddress(vote.Validator.Address).String(),
+					"power", vote.Validator.Power,
+					"error", err,
+				)
+				continue
+			}
+
 			return err
 		}
 
